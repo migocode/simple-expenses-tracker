@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>Recurring Expenses</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+CjxyZWN0IHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCIgcng9IjE2IiBmaWxsPSIjMmY2ZjVlIi8+CjxwYXRoIGQ9Ik0xOCAzNCBMMjcgNDMgTDQ2IDIyIiBmaWxsPSJub25lIiBzdHJva2U9IiNmNmYzZWMiIHN0cm9rZS13aWR0aD0iNi41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KPC9zdmc+Cg==">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+CjxyZWN0IHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCIgcng9IjE2IiBmaWxsPSIjMmY2ZjVlIi8+Cjx0ZXh0IHg9IjMyIiB5PSI0NSIgZm9udC1mYW1pbHk9IkFyaWFsLCBIZWx2ZXRpY2EsIHNhbnMtc2VyaWYiIGZvbnQtd2VpZ2h0PSI3MDAiIGZvbnQtc2l6ZT0iNDAiIGZpbGw9IiNmNmYzZWMiIHRleHQtYW5jaG9yPSJtaWRkbGUiPiYjODM2NDs8L3RleHQ+Cjwvc3ZnPgo=">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#2f6f5e">
@@ -89,6 +89,17 @@
   .amounts { flex: 0 0 auto; text-align: right; }
   .full { font-family: var(--mono); font-size: 0.95rem; }
   .monthly { font-family: var(--mono); font-size: 0.72rem; color: #8a8477; }
+
+  .edit {
+    flex: 0 0 auto;
+    width: 26px; height: 26px;
+    border-radius: 7px;
+    border: 1px solid var(--line);
+    background: none;
+    color: var(--accent);
+    font-size: 14px;
+    line-height: 1;
+  }
 
   .del {
     flex: 0 0 auto;
@@ -189,6 +200,9 @@
 <div class="add-section">
   <button class="add-btn" id="toggleFormBtn">+ Add expense</button>
   <div class="form" id="form">
+    <div class="field" style="margin-bottom:14px;">
+      <strong id="formTitle" style="font-size:0.95rem;">Add expense</strong>
+    </div>
     <div class="field">
       <label>Name</label>
       <input type="text" id="fName" placeholder="e.g. Netflix">
@@ -306,10 +320,15 @@ function render() {
         <div class="full">${fmt(exp.full)}</div>
         ${exp.divisor > 1 ? `<div class="monthly">${fmt(monthlyAmt)}/mo</div>` : ""}
       </div>
+      <button class="edit" data-action="edit">✎</button>
       <button class="del" data-action="delete">✕</button>
     `;
     row.querySelectorAll('[data-action="toggle"]').forEach(el => {
       el.addEventListener("click", () => { setPaid(exp.id, !isPaid(exp.id)); render(); });
+    });
+    row.querySelector('[data-action="edit"]').addEventListener("click", (e) => {
+      e.stopPropagation();
+      openFormForEdit(exp);
     });
     row.querySelector('[data-action="delete"]').addEventListener("click", (e) => {
       e.stopPropagation();
@@ -335,18 +354,38 @@ function escapeHtml(s) {
 
 const form = document.getElementById("form");
 const toggleFormBtn = document.getElementById("toggleFormBtn");
+const formTitle = document.getElementById("formTitle");
+let editingId = null;
 
 toggleFormBtn.addEventListener("click", () => {
+  editingId = null;
+  formTitle.textContent = "Add expense";
+  document.getElementById("saveBtn").textContent = "Save";
   form.classList.add("open");
   toggleFormBtn.style.display = "none";
   document.getElementById("fName").focus();
 });
+
+function openFormForEdit(exp) {
+  editingId = exp.id;
+  formTitle.textContent = "Edit expense";
+  document.getElementById("saveBtn").textContent = "Update";
+  document.getElementById("fName").value = exp.name;
+  document.getElementById("fAmount").value = exp.full;
+  document.getElementById("fDivisor").value = String(exp.divisor);
+  document.getElementById("fNote").value = exp.note || "";
+  form.classList.add("open");
+  toggleFormBtn.style.display = "none";
+  form.scrollIntoView({ behavior: "smooth", block: "center" });
+  document.getElementById("fName").focus();
+}
 
 document.getElementById("cancelBtn").addEventListener("click", () => {
   closeForm();
 });
 
 function closeForm() {
+  editingId = null;
   form.classList.remove("open");
   toggleFormBtn.style.display = "block";
   document.getElementById("fName").value = "";
@@ -365,10 +404,19 @@ document.getElementById("saveBtn").addEventListener("click", () => {
   if (isNaN(amount) || amount <= 0) { alert("Please enter a valid amount."); return; }
 
   const expenses = loadExpenses();
-  expenses.push({
-    id: "exp_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7),
-    name, full: amount, divisor, note
-  });
+
+  if (editingId) {
+    const idx = expenses.findIndex(x => x.id === editingId);
+    if (idx !== -1) {
+      expenses[idx] = { ...expenses[idx], name, full: amount, divisor, note };
+    }
+  } else {
+    expenses.push({
+      id: "exp_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7),
+      name, full: amount, divisor, note
+    });
+  }
+
   saveExpenses(expenses);
   closeForm();
   render();
