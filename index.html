@@ -224,6 +224,9 @@
   Data is saved only in this browser (localStorage), independent of any account. Clearing browser data or switching devices/browsers will lose it. Checkboxes reset automatically each new calendar month; your list of expenses stays.
   <br>
   <button id="resetBtn">Reset this month's checkmarks</button>
+  <button id="saveFileBtn">Save state to file</button>
+  <button id="loadFileBtn">Load state from file</button>
+  <input type="file" id="loadFileInput" accept="application/json,.json" style="display:none">
 </footer>
 
 <script>
@@ -376,6 +379,91 @@ document.getElementById("resetBtn").addEventListener("click", () => {
     loadExpenses().forEach(exp => setPaid(exp.id, false));
     render();
   }
+});
+
+// ---- Save / Load entire page state as a JSON file ----
+
+function collectAllPaidEntries() {
+  const paid = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key.startsWith("paid:")) {
+      paid[key] = localStorage.getItem(key);
+    }
+  }
+  return paid;
+}
+
+function buildStateSnapshot() {
+  return {
+    app: "recurring-expenses-tracker",
+    version: 1,
+    savedAt: new Date().toISOString(),
+    expenses: loadExpenses(),
+    paid: collectAllPaidEntries()
+  };
+}
+
+document.getElementById("saveFileBtn").addEventListener("click", () => {
+  const state = buildStateSnapshot();
+  const json = JSON.stringify(state, null, 2);
+  const blob = new Blob([json], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const dateStr = new Date().toISOString().slice(0, 10);
+  a.href = url;
+  a.download = `expenses-state-${dateStr}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+
+document.getElementById("loadFileBtn").addEventListener("click", () => {
+  document.getElementById("loadFileInput").click();
+});
+
+document.getElementById("loadFileInput").addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    let state;
+    try {
+      state = JSON.parse(reader.result);
+    } catch (err) {
+      alert("That file isn't valid JSON.");
+      e.target.value = "";
+      return;
+    }
+
+    if (!state || !Array.isArray(state.expenses) || typeof state.paid !== "object") {
+      alert("That file doesn't look like a valid saved state.");
+      e.target.value = "";
+      return;
+    }
+
+    if (!confirm("Load this file? It will replace your current expense list and checkmarks.")) {
+      e.target.value = "";
+      return;
+    }
+
+    // Clear existing paid: keys, then apply the loaded ones
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key.startsWith("paid:")) localStorage.removeItem(key);
+    }
+    Object.entries(state.paid).forEach(([key, val]) => {
+      localStorage.setItem(key, val);
+    });
+
+    saveExpenses(state.expenses);
+    e.target.value = "";
+    render();
+    alert("State loaded.");
+  };
+  reader.readAsText(file);
 });
 
 render();
